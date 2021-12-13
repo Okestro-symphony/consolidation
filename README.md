@@ -5,8 +5,11 @@ IITP-2021-0-00256 클라우드 자원의 지능적 관리를 위한 이종 가�
 ### Directory Explanation
 
 migration_objects: 서버 계층 정보 저장을 담당하는 객체
+
 server_objects: 마이그레이션 정보 저장을 담당하는 객체
+
 algorithms: 최적배치 알고리즘 ffd v1,v2 load_balancer v1,v2
+
 sample_data : 샘플 데이터
 
 ### Installation 
