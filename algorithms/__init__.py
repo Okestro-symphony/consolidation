@@ -1,0 +1,1 @@
+from .consolidation_algorithms import ConsolidationAlgorithm
