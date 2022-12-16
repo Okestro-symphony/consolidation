@@ -11,29 +11,12 @@ from utils.logs.log import standardLog
 standardLog = standardLog()
 
 class Consolidation:
-    """
-    renewal consolidation with
-    division, limit, sort
-    """
     def __init__(self, provider_instance):
         self.provider = provider_instance
         self.time = datetime.datetime.utcnow().isoformat()[:-3] + "Z"
         self.timestamp = int(datetime.datetime.timestamp(datetime.datetime.utcnow()) * 1000)
 
     def consolidation(self, division='region', limit=100, status_option=False):
-        """
-        renewal consolidation with division, limit, sort
-
-        Keyword Arguments:
-            division -- String(default: {'region'})
-             ['region', 'zone']
-            limit -- limit vm resource for stable operation (default: {100})
-            [1 ~ 100]
-            status_option -- host status apply to consolidation Algorithm(default: False)
-
-        Returns:
-            placement -- list(provider instances)
-        """
         try:
             if status_option is True:
                 for region in self.provider.regions:
@@ -47,7 +30,6 @@ class Consolidation:
 
 
         try:
-            # 처음 structure electronic cost 계산
             past_electronic_cost = 0
             for region in self.provider.regions:
                 for host in region.hosts:
@@ -67,7 +49,6 @@ class Consolidation:
                 cluster = self.provider.zones
 
             for division_cluster in cluster:
-                # 호스트가 1개면 continue
                 if len(division_cluster.hosts) <= 1:
                     continue
 
@@ -81,7 +62,6 @@ class Consolidation:
                 total_memory = 0
                 total_disk = 0
 
-                # 몇개의 host migration을 끌수 있는지 사전 check
                 for remain_unit in remain_hosts:
                     total_cpu += round(remain_unit.remain_cpu * limit * 0.01)
                     total_memory += round(remain_unit.remain_memory * limit * 0.01)
@@ -101,7 +81,6 @@ class Consolidation:
                 used_hosts = sorted(used_hosts,
                                     key=lambda x: (x.total_memory, x.total_cpu, x.total_disk))
 
-                # 이동 가능한 hosts들 이동하기
                 for used_unit in used_hosts:
                     migration_vms = list()
                     vms = sorted(used_unit.vms,
@@ -114,7 +93,6 @@ class Consolidation:
                         remain_hosts[0].vms.append(vm)
                         used_unit.vms.remove(vm)
 
-                        # from, to host의 resource 갱신
                         remain_hosts[0].used_cpu += vm.cpu
                         remain_hosts[0].used_memory += vm.memory
                         remain_hosts[0].used_disk += vm.disk
@@ -139,7 +117,6 @@ class Consolidation:
         standardLog.sending_log('success').info('calculate consolidation plan success')
 
         try:
-            # migration 할 수 없는 상황인 경우 평균 사용량으로 맞추기위한 host 분산
             if len(placement) == 0:
                 if len(remain_hosts) == 1:
                     pass
@@ -174,7 +151,6 @@ class Consolidation:
                     used_hosts[0].vms.remove(used_vms[0])
                     remain_hosts[0].vms.append(used_vms[0])
 
-                    # from, to host의 resource 갱신
                     remain_hosts[0].used_cpu += used_vms[0].cpu
                     remain_hosts[0].used_memory += used_vms[0].memory
                     remain_hosts[0].used_disk += used_vms[0].disk
@@ -213,3 +189,47 @@ class Consolidation:
             print(e)
             exit()
         standardLog.sending_log('success').info('calculate consolidation execution success')
+
+    def consolidation_evaluation(self, placement, migration_placement,
+                                 past_electronic_cost, possible='yes'):
+        total_cost = dict()
+        migration_costs = list()
+        electronic_costs = list()
+
+        try:
+            if possible == 'no':
+                migration_costs.append(0)
+            else:
+                semi_migration_costs = list()
+                accumulate = 0
+                for migration in migration_placement:
+                    accumulate += len(migration)
+                    semi_migration_costs.append(
+                        (migration_placement.index(migration) + 1) / accumulate)
+                max_migration_cost = max(semi_migration_costs)
+                for migration_cost in semi_migration_costs:
+                    cost = round((migration_cost / max_migration_cost) * 100, 2)
+                    migration_costs.append(cost)
+
+            for place in placement:
+                for region in place.regions:
+                    energy_consumption = 0
+                    for host in region.hosts:
+                        cpu_ratio = host.used_cpu / host.total_cpu
+                        mem_ratio = host.used_memory / host.total_memory
+                        if cpu_ratio == 0:
+                            continue
+                        else:
+                            energy_consumption += (200 + ((cpu_ratio + mem_ratio) / 2 * 100))
+                    elec_cost = round(100 - ((energy_consumption / past_electronic_cost) * 100), 2)
+                electronic_costs.append(elec_cost)
+
+            total_cost['migration cost'] = migration_costs
+            total_cost['electronic cost'] = electronic_costs
+        except Exception as e:
+            standardLog.sending_log('error', e).error('calculate consolidation evaluation error')
+            print(e)
+            exit()
+        standardLog.sending_log('success').info('calculate consolidation evaluation success')
+
+        return total_cost
