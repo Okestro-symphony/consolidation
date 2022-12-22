@@ -233,3 +233,72 @@ class Consolidation:
         standardLog.sending_log('success').info('calculate consolidation evaluation success')
 
         return total_cost
+
+    def conslidation_to_es(self, placement, migration_placement, total_cost):
+        provider_id = placement[0].provider_id
+        es = ESEngine()
+
+        count_host = 0
+        count_total = 0
+        try:
+            total_migration_count = 0
+            for place in placement:
+                shutdown_list = list()
+                count_host += 1
+                for region in place.regions:
+                    for host in region.hosts:
+                        es.write_data(index='consolidation_host', data={
+                            "datetime": self.time, "timestamp": self.timestamp,
+                            "provider_id": provider_id,
+                            "consolidation_number": (count_host), "host_name": host.host_name,
+                            "host_used_cpu": host.used_cpu, "host_remain_cpu": host.remain_cpu,
+                            "host_remain_memory": host.remain_memory,
+                            "host_used_memory": host.used_disk,
+                            "host_remain_disk": host.remain_disk, "host_used_disk": host.used_disk})
+
+                        if host.used_cpu == 0:
+                            shutdown_list.append(host.host_name)
+                    count_total += 1
+                    total_migration_count += len(migration_placement[count_host - 1])
+                    es.write_data(index='consolidation_total', data={
+                        "datetime": self.time, "timestamp": self.timestamp,
+                        "provider_id": place.provider_id,
+                        "consolidation_number": count_total, 'shutdown_host': shutdown_list,
+                        "total_migration_count": total_migration_count,
+                        'migration_cost': total_cost['migration cost'][count_total - 1],
+                        'electronic_cost': total_cost['electronic cost'][count_total - 1]})
+
+            count = 0
+            if len(shutdown_list) != 0:
+                for migration_count in range(len(migration_placement)):
+                    count += 1
+                    migration_count += 1
+                    for migration_vms in migration_placement[:migration_count]:
+                        for migration_vm in migration_vms:
+                            es.write_data(index='consolidation_vm', data={
+                                "datetime": self.time, "timestamp": self.timestamp,
+                                "provider_id": place.provider_id,
+                                'consolidation_number': count, 'from_host': migration_vm[0],
+                                'to_host': migration_vm[1], 'migration_vm_name': migration_vm[2].vm_name,
+                                'migration_vm_cpu': migration_vm[2].cpu,
+                                'migration_vm_memory': migration_vm[2].memory,
+                                'migration_vm_disk': migration_vm[2].disk})
+            else:
+                for migration_vms in migration_placement:
+                    count += 1
+                    for migration_vm in migration_vms:
+                        es.write_data(index='consolidation_vm', data={
+                            "datetime": self.time, "timestamp": self.timestamp,
+                            "provider_id": place.provider_id,
+                            'consolidation_number': count, 'from_host': migration_vm[0],
+                            'to_host': migration_vm[1], 'migration_vm_name': migration_vm[2].vm_name,
+                            'migration_vm_cpu': migration_vm[2].cpu,
+                            'migration_vm_memory': migration_vm[2].memory,
+                            'migration_vm_disk': migration_vm[2].disk})
+
+
+        except Exception as e:
+            standardLog.sending_log('error', e).error('consolidation result write to ES error')
+            print(e)
+            exit()
+        standardLog.sending_log('success').info('consolidation result write to ES success')
