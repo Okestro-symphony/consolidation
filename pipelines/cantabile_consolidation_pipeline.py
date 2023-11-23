@@ -16,7 +16,6 @@ def cantabile_consolidation() -> bool:
 
     main()
     print('finish')
-
     return True
 
 
